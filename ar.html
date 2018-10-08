@@ -1,0 +1,419 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title></title>
+</head>
+<body>
+	<div>
+		<!--   Control buttons to change the state -->
+		<h1>State</h1>
+		<div id="textInputAndSave">
+			<input type="text" name="Text" id="textInput">
+			<button style="margin-bottom: 30px" onclick="saveTextInState()">Save Text</button>
+		</div>
+		<div id="sizeInputAndSave">
+			<input type="text" name="Width" id="widthInput" placeholder="Enter Width...">
+			<input type="text" name="Height" id="heightInput" placeholder="Enter Height...">
+			<button style="margin-bottom: 30px" onclick="saveSizeOfObject()">Save Size</button>
+		</div>
+		<div>
+			<button style="margin-bottom: 20px" onclick="previousState()">Previous State</button>
+			<button style="margin-bottom: 20px" onclick="nextState()">Next State</button>
+		</div>
+
+		<!--   Test for server communication with ajax -->
+		<div style="width:400px; border: 1px black solid;" id="output">.... noch nix ....</div>
+		<button style="margin-bottom: 80px" onclick="sendInfosToServer()" id="sendDataID">Send</button>
+
+
+	</div>
+
+	<div>
+		<!--   Define Canvas -->
+		 <canvas id="myCanvas" width="1000" height="1400"></canvas>
+
+		 <!--  Import image and set invisible -->
+		<img id="imageThing" src="coffee.jpg" style="display:none">
+	</div>
+
+
+
+
+
+    <script>
+		// Global variable
+		var state = 0;		// state of state machine to run through process of getting all infos
+		
+		var maxNumberOfStates = 4;	// define maximum number of states that are defined below
+
+		// Define and initiate variable for size of customer object in cm
+		var sizeOfObject = {
+			Width: 0,
+			Height: 0,
+			WidthFloat: 0.0,
+			HeightFloat: 0.0
+		}
+
+		// Get Canvas and Context
+		var canvas = document.getElementById('myCanvas');
+		var context = canvas.getContext('2d');
+
+
+		// Define array of objects, that will be drawn on canvas in each state
+		var objectOnCanvas = [
+			{
+				// first: upper left point of area to be selected on object as reference of size
+				type: "CutoutLeftUpperPoint",
+				width: 4,
+				height: 4,
+				x: 0,
+				y: 0,
+				colorFillRectangle: "red",
+				colorBorder: "red",
+				statusMouseClick: "false",
+				statusRender: "false",
+				savedText: '',
+				instructionText: 'Wählen Sie im Foto einen Ausschnitt für das Objekt, indem Sie zunächst die linke obere Ecke markieren.',
+				textInputFieldVisible: false,
+				sizeInputFieldVisible: false
+			},
+			{
+				// second: lower right point of area to be selected on object as reference of size
+				type: "CutoutRightLowerPoint",
+				width: 4,
+				height: 4,
+				x: 0,
+				y: 0,
+				colorFillRectangle: "red",
+				colorBorder: "red",
+				statusMouseClick: "false",
+				statusRender: "false",
+				savedText: '',
+				instructionText: 'Wählen Sie im Foto einen Ausschnitt für das Objekt, indem Sie anschließend die rechtere untere Ecke markieren. Geben sie dann die Breite und die Höhe des gewählten Ausschnittes in cm ein.',
+				textInputFieldVisible: false,
+				sizeInputFieldVisible: true
+				},
+			{
+				// place image target on object
+				type: "imageTargetVuforia",
+				width: 20,
+				height: 40,
+				x: 0,
+				y: 0,
+				colorFillRectangle: "blue",
+				colorBorder: "white",
+				statusMouseClick: "false",
+				statusRender: "false",
+				savedText: '',
+				instructionText: 'Wählen Sie den Platz auf dem Objekt, wo Sie den den Marker später anheften wollen.',
+				textInputFieldVisible: false,
+				sizeInputFieldVisible: false
+			},
+			{
+				//place virtual marker over element of object that shall be augmented
+				type: "marker",
+				width: 10,
+				height: 10,
+				x: 0,
+				y: 0,
+				colorFillRectangle: "green",
+				colorBorder: "white",
+				statusMouseClick: "false",
+				statusRender: "false",
+				savedText: '',
+				instructionText: 'Markieren Sie das Element, dass sie augmentieren wollen. Geben Sie dann den zugehörigen Text ein.',
+				textInputFieldVisible: true,
+				sizeInputFieldVisible: false
+			}
+		];
+
+		// Initialization after loading web page
+		window.onload = function() {
+			// set visibility for elements in first state in the beginning 
+			// input field for size
+			setVisibilityOfInputField();
+			
+			// draw background and all elements on canvas after the start of the script
+			drawBackgroundOnCanvas(canvas);
+
+		};
+
+		// Change to next state
+		function nextState() {
+			if(state<maxNumberOfStates-1){
+				state++;
+			}
+
+			// set visibility for elements in  state
+			setVisibilityOfInputField();
+		}
+
+		// Change to previous state
+		function previousState() {
+			if(state>0){
+				state--;
+			}
+			// set visibility for elements in  state
+			setVisibilityOfInputField();
+		}
+
+		//set visibility of input fields
+		function setVisibilityOfInputField(){
+			// set visibility for elements in  state
+			if (objectOnCanvas[state].textInputFieldVisible){
+				document.getElementById("textInputAndSave").style.display = 'block';
+			}
+			else{
+				document.getElementById("textInputAndSave").style.display = 'none';
+			}
+			// input field for size: Width and Height
+			if (objectOnCanvas[state].sizeInputFieldVisible){
+				document.getElementById("sizeInputAndSave").style.display = 'block';
+			}
+			else{
+				document.getElementById("sizeInputAndSave").style.display = 'none';
+			}
+		}
+
+		// save the typed in text from input field into text variable of present state of object (objectOnCanvas[state])
+		function saveTextInState(){
+			if (document.getElementById('textInput').value !=''){
+				objectOnCanvas[state].savedText = document.getElementById('textInput').value;
+				document.getElementById('textInput').value='';
+			}
+
+			// draw background and all elements on canvas after the text was stored
+			drawBackgroundOnCanvas(canvas);
+		}
+
+		// save the typed in size from input field into present state of object (objectOnCanvas[state])
+		function saveSizeOfObject(){
+			if (document.getElementById('widthInput').value !=''){
+				sizeOfObject.Width = document.getElementById('widthInput').value;
+				document.getElementById('widthInput').value='';
+				sizeOfObject.WidthFloat = parseFloat(sizeOfObject.Width);
+			}
+			if (document.getElementById('heightInput').value !=''){
+				sizeOfObject.Height = document.getElementById('heightInput').value;
+				document.getElementById('heightInput').value='';
+				sizeOfObject.HeightFloat = parseFloat(sizeOfObject.Height);
+			}
+		}
+
+
+		//  Draw object on canvas 
+		function fixElementToCanvas(canvas, mousePos) {
+			var i; // counter
+				
+			// Context for canvas
+			var context = canvas.getContext('2d');
+
+			// Clear canvas
+			context.clearRect(0, 0, canvas.width, canvas.height);
+
+			// Begin Path in order to avoid that canvas isn't cleared correctly
+			context.beginPath();
+
+			// Draw background Image
+	   		var img=document.getElementById("imageThing");
+			
+			context.drawImage(img,0,0, img.naturalWidth*2, img.naturalHeight*2);	// reads in size of image
+			// ATTENTION: img.naturalWidth and img.naturalHeight should be loaded with img.onload = function() to ensure that image is completely loaded before getting width and height
+			
+			// Draw instructionText on the canvas (alternatively can be realised in HTML also)
+			context.font = '14pt Calibri';
+			context.fillStyle = 'red';
+			//context.fillText(objectOnCanvas[i].text, objectOnCanvas[i].x-objectOnCanvas[i].width/2 + 30, objectOnCanvas[i].y-objectOnCanvas[i].height/2 - 30);
+			context.fillText(objectOnCanvas[state].instructionText, 10, 20);
+
+			// Draw rectangle at Mouse Position		
+			context.strokeStyle="black";  // change color back to normal
+			context.rect(mousePos.x-objectOnCanvas[state].width/2, mousePos.y-objectOnCanvas[state].height/2, objectOnCanvas[state].width, objectOnCanvas[state].height);
+			context.stroke();
+
+			// Get position of present object after mousedown and store position in object
+			if (objectOnCanvas[state].statusMouseClick == "true"){
+				// Get Mouse Position
+				objectOnCanvas[state].x = mousePos.x;
+				objectOnCanvas[state].y = mousePos.y;
+				
+				objectOnCanvas[state].statusRender = "true";	// set status mouse click for this object to false again
+				objectOnCanvas[state].statusMouseClick = "false";	// set status mouse click for this object to false again
+			} 
+			
+			// Draw all objects that were placed on the canvas so far (were statusRender was set to true)
+			context.beginPath();
+			for (i=0; i<maxNumberOfStates; i++){
+				if (objectOnCanvas[i].statusRender == "true"){
+					if (objectOnCanvas[i].colorFillRectangle == "none"){
+						context.rect(objectOnCanvas[i].x-objectOnCanvas[i].width/2, objectOnCanvas[i].y-objectOnCanvas[i].height/2, objectOnCanvas[i].width, objectOnCanvas[i].height);
+					}
+					else {
+						context.fillStyle = objectOnCanvas[i].colorFillRectangle;
+						context.fillRect(objectOnCanvas[i].x-objectOnCanvas[i].width/2, objectOnCanvas[i].y-objectOnCanvas[i].height/2, objectOnCanvas[i].width, objectOnCanvas[i].height);
+						context.strokeStyle=objectOnCanvas[i].colorBorder;
+						context.strokeRect(objectOnCanvas[i].x-objectOnCanvas[i].width/2, objectOnCanvas[i].y-objectOnCanvas[i].height/2, objectOnCanvas[i].width, objectOnCanvas[i].height);
+					}
+					// display text that was saved for this object in this state
+					if (objectOnCanvas[i].savedText != ''){
+						context.font = '20pt Calibri';
+						context.fillStyle = 'red';
+						//context.fillText(objectOnCanvas[i].text, objectOnCanvas[i].x-objectOnCanvas[i].width/2 + 30, objectOnCanvas[i].y-objectOnCanvas[i].height/2 - 30);
+						context.fillText(objectOnCanvas[i].savedText, objectOnCanvas[i].x+objectOnCanvas[i].width/2 + 10, objectOnCanvas[i].y-objectOnCanvas[i].height/2-10);
+					}
+				}
+			} 
+			context.stroke();
+			
+			// Draw frame around objects in state 1 between 
+			if (state == 1){
+				context.beginPath();
+				context.strokeStyle="orange";
+				context.rect(objectOnCanvas[state-1].x, objectOnCanvas[state-1].y, mousePos.x-objectOnCanvas[state-1].x, mousePos.y-objectOnCanvas[state-1].y);
+				context.stroke();
+				// lower right corner was already selected once
+				if (objectOnCanvas[1].statusRender == "true"){
+					context.beginPath();
+					context.strokeStyle=objectOnCanvas[1].colorBorder;
+					context.rect(objectOnCanvas[0].x, objectOnCanvas[0].y, objectOnCanvas[1].x-objectOnCanvas[0].x, objectOnCanvas[1].y-objectOnCanvas[0].y);
+					context.stroke();
+				}
+			}
+			// Draw frame around object in all states 
+			else if (state>1){
+				context.beginPath();
+				context.strokeStyle=objectOnCanvas[1].colorBorder;
+				context.rect(objectOnCanvas[0].x, objectOnCanvas[0].y, objectOnCanvas[1].x-objectOnCanvas[0].x, objectOnCanvas[1].y-objectOnCanvas[0].y);
+				context.stroke();
+			}
+		}
+
+		//  Draw background on canvas 
+		//	function was inserted in order to draw typed-in text directly on canvas without needing to move mouse over canvas
+		//	function needs to be refactored in order to avoid doubling "fixElementToCanvas()"!
+		function drawBackgroundOnCanvas(canvas) {
+			var i; // counter
+				
+			// Context for canvas
+			var context = canvas.getContext('2d');
+
+			// Clear canvas
+			context.clearRect(0, 0, canvas.width, canvas.height);
+
+			// Begin Path in order to avoid that canvas isn't cleared correctly
+			context.beginPath();
+
+			// Draw background Image
+	   		var img=document.getElementById("imageThing");
+			
+			context.drawImage(img,0,0, img.naturalWidth*2, img.naturalHeight*2);	// reads in size of image
+			// ATTENTION: img.naturalWidth and img.naturalHeight should be loaded with img.onload = function() to ensure that image is completely loaded before getting width and height
+			
+			// Draw instructionText on the canvas (alternatively can be realised in HTML also)
+			context.font = '14pt Calibri';
+			context.fillStyle = 'red';
+			//context.fillText(objectOnCanvas[i].text, objectOnCanvas[i].x-objectOnCanvas[i].width/2 + 30, objectOnCanvas[i].y-objectOnCanvas[i].height/2 - 30);
+			context.fillText(objectOnCanvas[state].instructionText, 10, 20);
+
+			// Draw all objects that were placed on the canvas so far (were statusRender was set to true)
+			context.beginPath();
+			for (i=0; i<maxNumberOfStates; i++){
+				if (objectOnCanvas[i].statusRender == "true"){
+					if (objectOnCanvas[i].colorFillRectangle == "none"){
+						context.rect(objectOnCanvas[i].x-objectOnCanvas[i].width/2, objectOnCanvas[i].y-objectOnCanvas[i].height/2, objectOnCanvas[i].width, objectOnCanvas[i].height);
+					}
+					else {
+						context.fillStyle = objectOnCanvas[i].colorFillRectangle;
+						context.fillRect(objectOnCanvas[i].x-objectOnCanvas[i].width/2, objectOnCanvas[i].y-objectOnCanvas[i].height/2, objectOnCanvas[i].width, objectOnCanvas[i].height);
+						context.strokeStyle=objectOnCanvas[i].colorBorder;
+						context.strokeRect(objectOnCanvas[i].x-objectOnCanvas[i].width/2, objectOnCanvas[i].y-objectOnCanvas[i].height/2, objectOnCanvas[i].width, objectOnCanvas[i].height);
+					}
+					// display text that was saved for this object in this state
+					if (objectOnCanvas[i].savedText != ''){
+						context.font = '20pt Calibri';
+						context.fillStyle = 'red';
+						//context.fillText(objectOnCanvas[i].text, objectOnCanvas[i].x-objectOnCanvas[i].width/2 + 30, objectOnCanvas[i].y-objectOnCanvas[i].height/2 - 30);
+						context.fillText(objectOnCanvas[i].savedText, objectOnCanvas[i].x+objectOnCanvas[i].width/2 + 10, objectOnCanvas[i].y-objectOnCanvas[i].height/2-10);
+					}
+				}
+			} 
+			context.stroke();
+			
+			// Draw frame around objects in state 1 between 
+			if (state == 1){
+				context.beginPath();
+				context.strokeStyle="orange";
+				context.rect(objectOnCanvas[state-1].x, objectOnCanvas[state-1].y, mousePos.x-objectOnCanvas[state-1].x, mousePos.y-objectOnCanvas[state-1].y);
+				context.stroke();
+				// lower right corner was already selected once
+				if (objectOnCanvas[1].statusRender == "true"){
+					context.beginPath();
+					context.strokeStyle=objectOnCanvas[1].colorBorder;
+					context.rect(objectOnCanvas[0].x, objectOnCanvas[0].y, objectOnCanvas[1].x-objectOnCanvas[0].x, objectOnCanvas[1].y-objectOnCanvas[0].y);
+					context.stroke();
+				}
+			}
+			// Draw frame around object in all states 
+			else if (state>1){
+				context.beginPath();
+				context.strokeStyle=objectOnCanvas[1].colorBorder;
+				context.rect(objectOnCanvas[0].x, objectOnCanvas[0].y, objectOnCanvas[1].x-objectOnCanvas[0].x, objectOnCanvas[1].y-objectOnCanvas[0].y);
+				context.stroke();
+			}
+		}
+
+		// Get Mouse Position
+		function getMousePos(canvas, evt) {
+			var rect = canvas.getBoundingClientRect();
+			return {
+				x: evt.clientX - rect.left,
+				y: evt.clientY - rect.top
+			};
+		}
+
+
+		// Add Event Listener Mouse Movement
+		canvas.addEventListener('mousemove', function(evt) {
+			var mousePos = getMousePos(canvas, evt);
+			fixElementToCanvas(canvas, mousePos);
+		}, false);
+
+		// Add Event Listener Mouse Down
+		canvas.addEventListener('mousedown', function(evt) {
+			var mousePos = getMousePos(canvas, evt);
+
+			if ((state < maxNumberOfStates)){
+				objectOnCanvas[state].statusMouseClick = "true"; // change status for mouse clicked for present object depending on state
+			}
+			fixElementToCanvas(canvas, mousePos);
+		}, false);
+
+		// Send data to server
+		// just for testing server communication yet
+		// object needs to be refactored to the required data on server side instead of sending "objectOnCanvas"
+		function sendInfosToServer(){
+			var xhr = new XMLHttpRequest();
+			// select php file that shall receive the transferred data
+			var url = "serverAR.php";
+			xhr.open("POST", url, true);
+			xhr.setRequestHeader("Content-Type", "application/json");
+			// receive answer from server
+			xhr.onreadystatechange = function () {
+				if (xhr.readyState === 4 && xhr.status === 200) {
+					document.getElementById("output").innerHTML=xhr.responseText;
+					// if JSON element is returnded from server then access with:
+					//var json = JSON.parse(xhr.responseText);
+					//document.getElementById("output").innerHTML=json[2].type;
+				}
+			};
+			// read in data to be transfered to server
+			var data = JSON.stringify(objectOnCanvas);
+			// send data
+			xhr.send(data);
+		}
+
+    </script>
+</body>
+</html>
